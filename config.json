@@ -1,0 +1,102 @@
+[
+  {
+    "name": "The Third Prince of the Fallen Kingdom Has Regressed",
+    "list_url": "https://manhwaclan.com/manga/the-third-prince-of-the-fallen-kingdom-has-regressed/",
+    "selectors": {
+      "chapter_list_item": "li.wp-manga-chapter",
+      "chapter_link": "a",
+      "chapter_title": "a",
+      "chapter_image": "div.reading-content img"
+    }
+  },
+  {
+    "name": "Heavenly Inquisition Sword",
+    "list_url": "https://manhwaclan.com/manga/heavenly-inquisition-sword/",
+    "selectors": {
+      "chapter_list_item": "li.wp-manga-chapter",
+      "chapter_link": "a",
+      "chapter_title": "a",
+      "chapter_image": "div.reading-content img"
+    }
+  },
+  {
+    "name": "Return of the Sword God-Rank Civil Servant",
+    "list_url": "https://manhwaclan.com/manga/return-of-the-sword-god-rank-civil-servant/",
+    "selectors": {
+      "chapter_list_item": "li.wp-manga-chapter",
+      "chapter_link": "a",
+      "chapter_title": "a",
+      "chapter_image": "div.reading-content img"
+    }
+  },
+  {
+    "name": "Shut up, Evil Dragon, I dont want to raise a child with you anymore",
+    "list_url": "https://manhwaclan.com/manga/shut-up-evil-dragon-i-dont-want-to-raise-a-child-with-you-anymore/",
+    "selectors": {
+      "chapter_list_item": "li.wp-manga-chapter",
+      "chapter_link": "a",
+      "chapter_title": "a",
+      "chapter_image": "div.reading-content img"
+    }
+  },
+  {
+    "name": "Apocalypse Sword God",
+    "list_url": "https://manhwaclan.com/manga/apocalypse-sword-god/",
+    "selectors": {
+      "chapter_list_item": "li.wp-manga-chapter",
+      "chapter_link": "a",
+      "chapter_title": "a",
+      "chapter_image": "div.reading-content img"
+    }
+  },
+  {
+    "name": "Face Genius, 0-Year-Old Top Star",
+    "list_url": "https://manhwaclan.com/manga/face-genius-0-year-old-top-star/",
+    "selectors": {
+      "chapter_list_item": "li.wp-manga-chapter",
+      "chapter_link": "a",
+      "chapter_title": "a",
+      "chapter_image": "div.reading-content img"
+    }
+  },
+  {
+    "name": "Omniscient Reader's Viewpoint",
+    "list_url": "https://manhwaclan.com/manga/omniscient-readers-viewpoint-2/",
+    "selectors": {
+      "chapter_list_item": "li.wp-manga-chapter",
+      "chapter_link": "a",
+      "chapter_title": "a",
+      "chapter_image": "div.reading-content img"
+    }
+  },
+  {
+    "name": "Revenge of the Iron-Blooded Sword Hound",
+    "list_url": "https://manhwaclan.com/manga/revenge-of-the-iron-blooded-sword-hound/",
+    "selectors": {
+      "chapter_list_item": "li.wp-manga-chapter",
+      "chapter_link": "a",
+      "chapter_title": "a",
+      "chapter_image": "div.reading-content img"
+    }
+  },
+  {
+    "name": "Solo Leveling Ragnarok",
+    "list_url": "https://manhwaclan.com/manga/solo-leveling-ragnarok/",
+    "selectors": {
+      "chapter_list_item": "li.wp-manga-chapter",
+      "chapter_link": "a",
+      "chapter_title": "a",
+      "chapter_image": "div.reading-content img"
+    }
+  },
+  {
+    "name": "Solo Leveling",
+    "list_url": "https://manhwaclan.com/manga/solo-leveling/",
+    "selectors": {
+      "chapter_list_item": "li.wp-manga-chapter",
+      "chapter_link": "a",
+      "chapter_title": "a",
+      "chapter_image": "div.reading-content img"
+    }
+  }
+]
