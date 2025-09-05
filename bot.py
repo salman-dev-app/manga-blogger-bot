@@ -1,6 +1,47 @@
 # bot.py (v2.1 - ImageKit.io Support)
 
+import os # --- DEBUGGING BLOCK START ---
+print("--- Checking Environment Variables ---")
+required_secrets = [
+    'BLOG_ID',
+    'IMAGEKIT_PRIVATE_KEY',
+    'G_CLIENT_ID',
+    'G_CLIENT_SECRET',
+    'G_REFRESH_TOKEN'
+]
+missing_secrets = []
+for secret in required_secrets:
+    value = os.getenv(secret)
+    if not value:
+        missing_secrets.append(secret)
+        print(f"❌ MISSING: {secret}")
+    else:
+        # নিরাপত্তার জন্য, আমরা পুরো কী প্রিন্ট করব না, শুধু প্রথম কয়েকটি অক্ষর দেখব
+        print(f"✅ FOUND: {secret} (Value starts with: {value[:4]}...)")
+
+if missing_secrets:
+    print("\nError: One or more required secrets are missing. Halting execution.")
+    # কোনো একটি Secret না পাওয়া গেলে, বটটি এখানেই বন্ধ হয়ে যাবে
+    exit(1)
+else:
+    print("--- All secrets found. Proceeding with bot execution. ---\n")
+# --- DEBUGGING BLOCK END ---
+
+# ... আপনার বাকি কোড এখান থেকে শুরু হবে (import json, import requests, ইত্যাদি)
+```**গুরুত্বপূর্ণ:** এই কোডটি আপনার `import os` লাইনের ঠিক নিচে এবং `import json` লাইনের ঠিক উপরে বসান।
+
+#### আপনার `bot.py` ফাইলটি দেখতে এখন এমন হবে:
+```python
 import os
+
+# --- DEBUGGING BLOCK START ---
+print("--- Checking Environment Variables ---")
+# ... (উপরের সম্পূর্ণ ডিবাগিং কোড) ...
+# --- DEBUGGING BLOCK END ---
+
+import json
+import requests
+# ... (আপনার বাকি কোড) ...
 import json
 import requests
 from bs4 import BeautifulSoup
