@@ -32,7 +32,7 @@ jobs:
       # GitHub Secrets থেকে সব গোপন তথ্য এখানে আনা হচ্ছে
       - name: Run the bot script
         env:
-          IMGBB_API_KEY: ${{ secrets.IMGBB_API_KEY }}
+          IMAGEKIT_PRIVATE_KEY: ${{ secrets.IMAGEKIT_PRIVATE_KEY }}
           BLOG_ID: ${{ secrets.BLOG_ID }}
           G_CLIENT_ID: ${{ secrets.G_CLIENT_ID }}
           G_CLIENT_SECRET: ${{ secrets.G_CLIENT_SECRET }}
