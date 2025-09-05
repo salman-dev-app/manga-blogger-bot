@@ -1,4 +1,4 @@
-# bot.py (v2 - Multi-Series Support)
+# bot.py (v2.1 - ImageKit.io Support)
 
 import os
 import json
@@ -14,8 +14,10 @@ from urllib.parse import urljoin
 
 # --- Configuration ---
 # এই ভ্যারিয়েবলগুলোর মান এখন GitHub Secrets থেকে আসবে
-IMGBB_API_KEY = os.getenv('IMGBB_API_KEY')
 BLOG_ID = os.getenv('BLOG_ID')
+
+# নতুন: ImageKit Private Key এখন GitHub Secrets থেকে আসবে
+IMAGEKIT_PRIVATE_KEY = os.getenv('IMAGEKIT_PRIVATE_KEY')
 
 # লোকাল ফাইলের নাম
 CONFIG_FILE = 'config.json'
@@ -81,7 +83,6 @@ def scrape_website_for_new_chapters(series_config, posted_chapters_for_series):
                 continue
 
             chapter_url = link_tag.get('href', '').strip()
-            # কিছু সাইট 상대 (relative) URL ব্যবহার করে, তাই সম্পূর্ণ URL তৈরি করতে হবে
             if chapter_url and not chapter_url.startswith('http'):
                 chapter_url = urljoin(list_url, chapter_url)
 
@@ -113,7 +114,6 @@ def get_image_urls_from_chapter(chapter_url, image_selector):
             return []
 
         for img_tag in image_tags:
-            # অনেক সাইট lazy loading ব্যবহার করে, তাই 'data-src' বা অন্য attribute চেক করতে হতে পারে
             img_url = img_tag.get('data-src', img_tag.get('src', '')).strip()
             if img_url:
                 image_urls.append(img_url)
@@ -123,27 +123,40 @@ def get_image_urls_from_chapter(chapter_url, image_selector):
         print(f"Error getting images from chapter: {e}")
         return []
 
-def upload_image_to_imgbb(image_url):
-    """ImgBB-তে ছবি আপলোড করে"""
+def upload_image_to_imagekit(image_url):
+    """একটি ছবির URL থেকে ছবি ডাউনলোড করে ImageKit.io-তে আপলোড করে"""
     try:
-        # কিছু সাইট সরাসরি ডাউনলোড ব্লক করে, তাই User-Agent এবং Referer হেডার জরুরি
-        response = requests.get(image_url, headers={'User-Agent': 'Mozilla/5.0', 'Referer': 'https://google.com'}, timeout=60)
-        response.raise_for_status()
+        # হটলিংক প্রোটেকশন এড়ানোর জন্য Referer হেডার খুব জরুরি
+        image_response = requests.get(image_url, headers={'User-Agent': 'Mozilla/5.0', 'Referer': 'https://manhwaclan.com/'}, timeout=60)
+        image_response.raise_for_status()
         
-        image_b64 = base64.b64encode(response.content)
+        image_b64 = base64.b64encode(image_response.content)
         
-        payload = {"key": IMGBB_API_KEY, "image": image_b64}
-        upload_response = requests.post("https://api.imgbb.com/1/upload", data=payload, timeout=60)
+        upload_url = 'https://upload.imagekit.io/api/v1/files/upload'
+        
+        from urllib.parse import urlparse
+        file_name = os.path.basename(urlparse(image_url).path)
+
+        payload = {
+            'file': image_b64,
+            'fileName': file_name,
+        }
+        
+        # প্রাইভেট কী অথেনটিকেশনের জন্য ব্যবহৃত হয়
+        auth = (IMAGEKIT_PRIVATE_KEY, '')
+        
+        upload_response = requests.post(upload_url, data=payload, auth=auth, timeout=60)
         upload_response.raise_for_status()
         
         result = upload_response.json()
-        if result.get('data', {}).get('url'):
-            return result['data']['url']
+        if result and result.get('url'):
+            return result['url']
         else:
-            print(f"ImgBB upload failed: {result.get('error', {}).get('message', 'Unknown error')}")
+            print(f"ImageKit upload failed: {result}")
             return None
+            
     except requests.RequestException as e:
-        print(f"Error uploading image {image_url}: {e}")
+        print(f"Error during ImageKit upload for image {image_url}: {e}")
         return None
 
 def get_blogger_service():
@@ -156,8 +169,6 @@ def get_blogger_service():
             "token_uri": "https://oauth2.googleapis.com/token",
         }
         creds = Credentials.from_authorized_user_info(info=creds_info, scopes=SCOPES)
-        # টোকেন ভ্যালিড কিনা বা এক্সপায়ার্ড কিনা তা চেক করার প্রয়োজন নেই,
-        # লাইব্রেরি নিজে থেকেই রিফ্রেশ করে নেবে যখন দরকার হবে।
         return build('blogger', 'v3', credentials=creds)
     except Exception as e:
         print(f"Error creating Blogger service: {e}")
@@ -210,13 +221,14 @@ def main():
             uploaded_image_links = []
             for i, img_url in enumerate(image_urls):
                 print(f"  Uploading image {i+1}/{len(image_urls)}...")
-                new_link = upload_image_to_imgbb(img_url)
+                # ⚠️ মূল পরিবর্তনটি এখানে
+                new_link = upload_image_to_imagekit(img_url)
                 if new_link:
                     uploaded_image_links.append(new_link)
                 else:
                     print("  Skipping this chapter due to an image upload failure.")
                     break
-                time.sleep(1) # ImgBB API-কে সময় দেওয়ার জন্য ১ সেকেন্ড বিরতি
+                time.sleep(1)
 
             if len(uploaded_image_links) != len(image_urls):
                 continue
@@ -232,18 +244,17 @@ def main():
                 print("  State file updated.")
             
             print("  Waiting for 10 seconds before processing the next chapter...")
-            time.sleep(10) # দুটি পোস্টের মধ্যে কিছুটা বিরতি
+            time.sleep(10)
 
         print(f"Finished processing series: {series_name}")
         print("Waiting for 30 seconds before starting the next series...")
-        time.sleep(30) # দুটি সিরিজের মধ্যে কিছুটা বিরতি
+        time.sleep(30)
 
     print("\n--- All series processed. Bot finished. ---")
 
 
 if __name__ == '__main__':
-    # নিশ্চিত করুন যে প্রয়োজনীয় API Key গুলো সেট করা আছে
-    if not all([IMGBB_API_KEY, BLOG_ID, G_CLIENT_ID, G_CLIENT_SECRET, G_REFRESH_TOKEN]):
+    if not all([IMAGEKIT_PRIVATE_KEY, BLOG_ID, G_CLIENT_ID, G_CLIENT_SECRET, G_REFRESH_TOKEN]):
         print("Error: One or more required environment variables (API Keys/Secrets) are missing.")
         print("Please check your GitHub repository's Secrets configuration.")
     else:
