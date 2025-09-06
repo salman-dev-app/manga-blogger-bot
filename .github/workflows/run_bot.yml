@@ -2,18 +2,14 @@ name: Manga Publishing Bot
 
 on:
   schedule:
-    # প্রতি ৬ ঘণ্টা পর পর বটটি চলবে
     - cron: '0 */6 * * *'
-  
-  # GitHub-এর Actions ট্যাব থেকে ম্যানুয়ালি বট চালানোর জন্য
   workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
     
-    # --- নতুন এবং গুরুত্বপূর্ণ পরিবর্তন ---
-    # এই অংশটি বটকে posted_chapters.json ফাইলটি পুশ করার অনুমতি দেয়
+    # এই লাইনটি থাকা আবশ্যক
     permissions:
       contents: write
 
@@ -31,8 +27,7 @@ jobs:
 
       - name: Run the bot script
         env:
-          # --- অপ্রয়োজনীয় কী সরানো হয়েছে ---
-          # এখন শুধু Google-এর Secret গুলোই প্রয়োজন
+          # এখানে আর কোনো ইমেজ হোস্টিং কী নেই
           BLOG_ID: ${{ secrets.BLOG_ID }}
           G_CLIENT_ID: ${{ secrets.G_CLIENT_ID }}
           G_CLIENT_SECRET: ${{ secrets.G_CLIENT_SECRET }}
