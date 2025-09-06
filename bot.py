@@ -1,17 +1,15 @@
-# bot.py (v3.2 - The Definitive Bot with Rate Limit Handling)
+# bot.py (v4 - The Ultimate Bot with Two-Step Upload)
 
 import os
 import json
 import requests
 from bs4 import BeautifulSoup
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-import base64
 import time
 from urllib.parse import urljoin
 import re
+import base64
 
 # --- Configuration ---
 BLOG_ID = os.getenv('BLOG_ID')
@@ -46,6 +44,44 @@ def get_blogger_service():
         print(f"Error creating Blogger service: {e}")
         return None
 
+def upload_image_and_get_url(service, image_url, referer):
+    """ছবি ডাউনলোড করে একটি ড্রাফট পোস্টে আপলোড করে এবং Blogger-এর লিঙ্ক বের করে আনে"""
+    try:
+        print(f"    Downloading image: {image_url}")
+        image_response = requests.get(image_url, headers={'User-Agent': 'Mozilla/5.0', 'Referer': referer}, timeout=60)
+        image_response.raise_for_status()
+        
+        image_b64 = base64.b64encode(image_response.content).decode('utf-8')
+        content_type = image_response.headers.get('content-type', 'image/jpeg')
+        
+        # একটি অস্থায়ী ড্রাফট পোস্ট তৈরি করা হচ্ছে শুধু ছবি আপলোড করার জন্য
+        draft_title = f"temp_image_upload_{int(time.time())}"
+        draft_content = f'<img src="data:{content_type};base64,{image_b64}" />'
+        draft_body = {"title": draft_title, "content": draft_content}
+        
+        print("    Uploading to a temporary draft post...")
+        draft_post = service.posts().insert(blogId=BLOG_ID, body=draft_body, isDraft=True).execute()
+        
+        # ড্রাফট পোস্ট থেকে ছবির URL বের করা হচ্ছে
+        post_content = draft_post.get('content', '')
+        match = re.search(r'src="([^"]+)"', post_content)
+        
+        # ড্রাফট পোস্টটি মুছে ফেলা হচ্ছে
+        service.posts().delete(blogId=BLOG_ID, postId=draft_post['id']).execute()
+        print("    Temporary draft post deleted.")
+
+        if match:
+            # হাই-কোয়ালিটি s0 লিঙ্ক তৈরি করা
+            blogger_url = match.group(1)
+            return re.sub(r'\/s\d+([-\w]*)\/', '/s0/', blogger_url)
+        else:
+            print("    Could not extract image URL from draft post.")
+            return None
+            
+    except Exception as e:
+        print(f"    An error occurred during image upload: {e}")
+        return None
+
 # --- Main Post Logic ---
 def get_jikan_manga_details(series_name):
     print(f"  Fetching details for '{series_name}' from Jikan API...")
@@ -65,32 +101,24 @@ def get_jikan_manga_details(series_name):
 def create_main_post(service, series_name):
     print(f"  Main post for '{series_name}' does not exist. Creating it now...")
     details = get_jikan_manga_details(series_name)
-    if not details:
-        print(f"  Failed to get details for '{series_name}'. Skipping main post creation.")
-        return False
+    if not details: return False
 
     title = details.get('title', series_name)
     synopsis = details.get('synopsis', 'No synopsis available.')
-    cover_url = details.get('images', {}).get('jpg', {}).get('large_image_url', '')
-    if not cover_url:
-        print("  Could not find a cover image. Skipping.")
+    cover_url_original = details.get('images', {}).get('jpg', {}).get('large_image_url', '')
+    if not cover_url_original: return False
+        
+    print("  Uploading cover image...")
+    cover_url_blogger = upload_image_and_get_url(service, cover_url_original, 'https://myanimelist.net/')
+    if not cover_url_blogger:
+        print("  Failed to upload cover image. Skipping main post creation.")
         return False
         
     labels = [tag.get('name') for tag in details.get('genres', [])]
-    labels.append("Series")
-    labels.append(series_name)
+    labels.append("Series"); labels.append(series_name)
     
-    try:
-        image_response = requests.get(cover_url, timeout=30)
-        image_response.raise_for_status()
-        image_b64 = base64.b64encode(image_response.content).decode('utf-8')
-        content_type = image_response.headers.get('content-type', 'image/jpeg')
-        cover_html = f'<div class="separator" style="text-align: center;"><img src="data:{content_type};base64,{image_b64}" /></div>'
-    except requests.RequestException as e:
-        print(f"  Failed to download cover image: {e}")
-        return False
-        
-    content = f"{cover_html}<p>{synopsis}</p><!--chapter-list-->"
+    cover_html = f'<div class="separator" style="text-align: center;"><img src="{cover_url_blogger}" /></div>'
+    content = f'{cover_html}<p>{synopsis}</p><!--chapter-list--><div class="chapter_get" data-labelchapter="{series_name}"></div>'
     
     try:
         body = {"title": title, "content": content, "labels": list(set(labels))}
@@ -103,6 +131,7 @@ def create_main_post(service, series_name):
 
 # --- Chapter Post Logic ---
 def scrape_chapters(series_config):
+    # ... (এই ফাংশনটি আগের মতোই থাকবে, কোনো পরিবর্তন নেই) ...
     list_url, selectors = series_config['list_url'], series_config['selectors']
     print(f"  Scraping chapter list from {list_url}")
     try:
@@ -138,41 +167,26 @@ def create_chapter_post(service, series_name, chapter_info, image_selector):
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
         image_tags = soup.select(image_selector)
-        
-        if not image_tags:
-            print("  No images found. Skipping chapter.")
-            return False, None
+        if not image_tags: return False, None
         
         html_content = ""
-        for img_tag in image_tags:
+        for i, img_tag in enumerate(image_tags):
             img_url = img_tag.get('data-src', img_tag.get('src', '')).strip()
             if not img_url: continue
             
-            try:
-                image_response = requests.get(img_url, headers={'User-Agent': 'Mozilla/5.0', 'Referer': chapter_url}, timeout=60)
-                image_response.raise_for_status()
-                image_b64 = base64.b64encode(image_response.content).decode('utf-8')
-                content_type = image_response.headers.get('content-type', 'image/jpeg')
-                html_content += f'<div class="separator" style="text-align: center;"><img src="data:{content_type};base64,{image_b64}" /></div>\n'
-            except requests.RequestException:
-                time.sleep(2)
-                
-        if not html_content:
-            print("  Could not construct post content. Skipping.")
-            return False, None
+            print(f"  Processing image {i+1}/{len(image_tags)}")
+            blogger_img_url = upload_image_and_get_url(service, img_url, chapter_url)
+            if blogger_img_url:
+                html_content += f'<div class="separator" style="text-align: center;"><img src="{blogger_img_url}" /></div>\n'
+            else:
+                print("    Image upload failed. Skipping this image.")
+            time.sleep(5) # প্রতিটি ছবি আপলোডের পর বিরতি
+        
+        if not html_content: return False, None
 
         body = {"title": chapter_title, "content": html_content, "labels": ["Chapter", series_name]}
         post = service.posts().insert(blogId=BLOG_ID, body=body, isDraft=False).execute()
         print(f"  Successfully posted: '{post['title']}'")
-
-        try:
-            content_with_s0 = re.sub(r'\/s\d+([-\w]*)\/', '/s0/', post['content'])
-            if content_with_s0 != post['content']:
-                service.posts().patch(blogId=BLOG_ID, postId=post['id'], body={'content': content_with_s0}).execute()
-                print("  Updated post with high-quality s0 image URLs.")
-        except Exception as e:
-            print(f"  Could not update post with s0 URLs: {e}")
-
         return True, chapter_url
     except Exception as e:
         print(f"  An error occurred while creating chapter post: {e}")
@@ -180,12 +194,13 @@ def create_chapter_post(service, series_name, chapter_info, image_selector):
 
 # --- Main Bot Logic ---
 def main():
+    # ... (এই ফাংশনটি আগের মতোই থাকবে, কোনো পরিবর্তন নেই) ...
     configs = load_json(CONFIG_FILE, [])
     state = load_json(STATE_FILE, {"main_posts_created": [], "chapters_posted": {}})
     
     if not configs:
         print("Config file is empty. Exiting."); return
-        
+            
     blogger_service = get_blogger_service()
     if not blogger_service:
         print("Could not connect to Blogger. Exiting."); return
@@ -200,31 +215,23 @@ def main():
                 state["main_posts_created"].append(series_name)
                 save_json(STATE_FILE, state)
                 print("  State file updated for main post.")
-                # --- পরিবর্তন ১: মূল পোস্টের পর ১ মিনিট (৬০ সেকেন্ড) বিরতি ---
-                print("  Waiting for 60 seconds before processing chapters...")
                 time.sleep(60)
             else:
                 print(f"  Skipping chapter posts for '{series_name}' due to main post failure.")
-                # --- পরিবর্তন ৩: একটি সিরিজ ব্যর্থ হলে পরের সিরিজে যাওয়ার আগে বিরতি ---
-                print(f"--- Series '{series_name}' failed. Waiting for 2 minutes before the next series ---")
                 time.sleep(120)
-                continue # পরের সিরিজে যাও
+                continue
 
         all_chapters_on_site = scrape_chapters(config)
-        
         if series_name not in state["chapters_posted"]:
             state["chapters_posted"][series_name] = []
         
         posted_chapter_urls = state["chapters_posted"][series_name]
-        
         chapters_to_post = [ch for ch in all_chapters_on_site if ch['url'] not in posted_chapter_urls]
         
         if not chapters_to_post:
             print(f"  No new chapters to post for {series_name}.")
-            # --- পরিবর্তন ৩: একটি সিরিজ শেষ হলে পরের সিরিজে যাওয়ার আগে বিরতি ---
-            print(f"--- Finished series '{series_name}'. Waiting for 2 minutes before the next series ---")
             time.sleep(120)
-            continue # পরের সিরিজে যাও
+            continue
         
         print(f"  Found {len(chapters_to_post)} new chapters to post.")
         
@@ -234,11 +241,9 @@ def main():
                 state["chapters_posted"][series_name].append(posted_url)
                 save_json(STATE_FILE, state)
             
-            # --- পরিবর্তন ২: প্রতিটি চ্যাপ্টার পোস্টের পর ৩০ সেকেন্ড বিরতি ---
             print("  Waiting for 30 seconds before the next chapter...")
             time.sleep(30) 
         
-        # --- পরিবর্তন ৩: একটি সিরিজের সব চ্যাপ্টার পোস্ট করার পর পরের সিরিজে যাওয়ার আগে বিরতি ---
         print(f"--- Finished series '{series_name}'. Waiting for 2 minutes before the next series ---")
         time.sleep(120)
 
