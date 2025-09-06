@@ -1,4 +1,4 @@
-# bot.py (v3.1 - The Definitive Bot with Correct Logic)
+# bot.py (v3.2 - The Definitive Bot with Rate Limit Handling)
 
 import os
 import json
@@ -200,10 +200,15 @@ def main():
                 state["main_posts_created"].append(series_name)
                 save_json(STATE_FILE, state)
                 print("  State file updated for main post.")
-                time.sleep(10)
+                # --- পরিবর্তন ১: মূল পোস্টের পর ১ মিনিট (৬০ সেকেন্ড) বিরতি ---
+                print("  Waiting for 60 seconds before processing chapters...")
+                time.sleep(60)
             else:
                 print(f"  Skipping chapter posts for '{series_name}' due to main post failure.")
-                continue
+                # --- পরিবর্তন ৩: একটি সিরিজ ব্যর্থ হলে পরের সিরিজে যাওয়ার আগে বিরতি ---
+                print(f"--- Series '{series_name}' failed. Waiting for 2 minutes before the next series ---")
+                time.sleep(120)
+                continue # পরের সিরিজে যাও
 
         all_chapters_on_site = scrape_chapters(config)
         
@@ -216,7 +221,10 @@ def main():
         
         if not chapters_to_post:
             print(f"  No new chapters to post for {series_name}.")
-            continue
+            # --- পরিবর্তন ৩: একটি সিরিজ শেষ হলে পরের সিরিজে যাওয়ার আগে বিরতি ---
+            print(f"--- Finished series '{series_name}'. Waiting for 2 minutes before the next series ---")
+            time.sleep(120)
+            continue # পরের সিরিজে যাও
         
         print(f"  Found {len(chapters_to_post)} new chapters to post.")
         
@@ -226,7 +234,14 @@ def main():
                 state["chapters_posted"][series_name].append(posted_url)
                 save_json(STATE_FILE, state)
             
+            # --- পরিবর্তন ২: প্রতিটি চ্যাপ্টার পোস্টের পর ৩০ সেকেন্ড বিরতি ---
+            print("  Waiting for 30 seconds before the next chapter...")
             time.sleep(30) 
+        
+        # --- পরিবর্তন ৩: একটি সিরিজের সব চ্যাপ্টার পোস্ট করার পর পরের সিরিজে যাওয়ার আগে বিরতি ---
+        print(f"--- Finished series '{series_name}'. Waiting for 2 minutes before the next series ---")
+        time.sleep(120)
+
 
     print("\n--- All series processed. Bot finished. ---")
 
