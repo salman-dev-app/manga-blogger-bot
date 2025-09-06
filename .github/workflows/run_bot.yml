@@ -2,44 +2,43 @@ name: Manga Publishing Bot
 
 on:
   schedule:
-    # এই সময়সূচী অনুযায়ী, বটটি প্রতি ৬ ঘণ্টা পর পর চলবে।
-    # আপনি চাইলে '*/6' পরিবর্তন করে '*/12' (প্রতি ১২ ঘণ্টা) বা '0 0 * * *' (প্রতিদিন রাত ১২টায়) করতে পারেন।
+    # প্রতি ৬ ঘণ্টা পর পর বটটি চলবে
     - cron: '0 */6 * * *'
   
-  # এই লাইনটি আপনাকে GitHub-এর Actions ট্যাব থেকে ম্যানুয়ালি বট চালানোর সুযোগ দেবে।
-  # টেস্টিংয়ের জন্য এটি খুবই দরকারি।
+  # GitHub-এর Actions ট্যাব থেকে ম্যানুয়ালি বট চালানোর জন্য
   workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    
+    # --- নতুন এবং গুরুত্বপূর্ণ পরিবর্তন ---
+    # এই অংশটি বটকে posted_chapters.json ফাইলটি পুশ করার অনুমতি দেয়
+    permissions:
+      contents: write
+
     steps:
-      # ধাপ ক: আপনার রিপোজিটরির কোডগুলোকে ভার্চুয়াল কম্পিউটারে আনা হয়
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # ধাপ খ: পাইথন সেটআপ করা হয়
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      # ধাপ গ: requirements.txt-এ থাকা লাইব্রেরিগুলো ইনস্টল করা হয়
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # ধাপ ঘ: আপনার পাইথন বট স্ক্রিপ্টটি চালানো হয়
-      # GitHub Secrets থেকে সব গোপন তথ্য এখানে আনা হচ্ছে
       - name: Run the bot script
         env:
-          IMAGEKIT_PRIVATE_KEY: ${{ secrets.IMAGEKIT_PRIVATE_KEY }}
+          # --- অপ্রয়োজনীয় কী সরানো হয়েছে ---
+          # এখন শুধু Google-এর Secret গুলোই প্রয়োজন
           BLOG_ID: ${{ secrets.BLOG_ID }}
           G_CLIENT_ID: ${{ secrets.G_CLIENT_ID }}
           G_CLIENT_SECRET: ${{ secrets.G_CLIENT_SECRET }}
           G_REFRESH_TOKEN: ${{ secrets.G_REFRESH_TOKEN }}
         run: python bot.py
 
-      # ধাপ ঙ: posted_chapters.json ফাইলটিকে আপডেট করে আবার রিপোজিটরিতে সেভ করা হয়
       - name: Commit and push if changed
         run: |
           git config --global user.name 'github-actions[bot]'
