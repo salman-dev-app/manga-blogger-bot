@@ -3,7 +3,7 @@
 from google_auth_oauthlib.flow import InstalledAppFlow
 
 # ⚠️ নিচের দুটি লাইন আগের মতোই থাকবে
-SCOPES = ['https://www.googleapis.com/auth/blogger']
+SCOPES = ['https://www.googleapis.com/auth/blogger', 'https://www.googleapis.com/auth/photoslibrary.appendonly']
 CLIENT_SECRETS_FILE = "client_secret_652211411379-2fb5ug8om5qdg0sifih8dfmcd4i31di3.apps.googleusercontent.com.json" # ⚠️ আপনার JSON ফাইলের সঠিক নাম দিন
 
 def main():
