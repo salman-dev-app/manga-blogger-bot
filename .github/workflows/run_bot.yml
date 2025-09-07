@@ -9,7 +9,6 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
     
-    # এই লাইনটি থাকা আবশ্যক
     permissions:
       contents: write
 
@@ -27,7 +26,6 @@ jobs:
 
       - name: Run the bot script
         env:
-          # এখানে আর কোনো ইমেজ হোস্টিং কী নেই
           BLOG_ID: ${{ secrets.BLOG_ID }}
           G_CLIENT_ID: ${{ secrets.G_CLIENT_ID }}
           G_CLIENT_SECRET: ${{ secrets.G_CLIENT_SECRET }}
@@ -38,6 +36,7 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          # --- সঠিক ফাইলের নামটি এখানে ---
           git add posted_chapters.json
           git diff --staged --quiet || git commit -m "Update posted chapters list"
           git push
