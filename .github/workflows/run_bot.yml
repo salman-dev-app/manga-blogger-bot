@@ -2,7 +2,8 @@ name: Manga Publishing Bot
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    # --- পরিবর্তন: এখন প্রতি ঘণ্টার শুরুতে চলবে ---
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -20,11 +21,7 @@ jobs:
         with:
           python-version: '3.10'
 
-      # --- নতুন এবং নির্ভরযোগ্য Chrome সেটআপ ---
-      - name: Set up Chrome
-        uses: browser-actions/setup-chrome@v1
-      
-      - name: Install Python Dependencies
+      - name: Install dependencies
         run: pip install -r requirements.txt
 
       - name: Run the bot script
@@ -33,6 +30,7 @@ jobs:
           G_CLIENT_ID: ${{ secrets.G_CLIENT_ID }}
           G_CLIENT_SECRET: ${{ secrets.G_CLIENT_SECRET }}
           G_REFRESH_TOKEN: ${{ secrets.G_REFRESH_TOKEN }}
+          IMGBB_API_KEY: ${{ secrets.IMGBB_API_KEY }}
         run: python bot.py
 
       - name: Commit and push if changed
