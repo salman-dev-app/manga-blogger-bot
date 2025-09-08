@@ -1,4 +1,4 @@
-# bot.py (v7.5 - The Ultimate Human Simulator Bot - CattBox Spelling Fix)
+# bot.py (v8.1 - The Ultimate Simple & Reliable ImgBB Bot - Final Version)
 
 import os
 import json
@@ -8,14 +8,11 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 import time
 from urllib.parse import urljoin
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import tempfile
+import base64
 
 # --- Configuration & Helper Functions ---
 BLOG_ID = os.getenv('BLOG_ID')
+IMGBB_API_KEY = os.getenv('IMGBB_API_KEY')
 CONFIG_FILE = 'config.json'
 STATE_FILE = 'posted_chapters.json'
 SCOPES = ['https://www.googleapis.com/auth/blogger']
@@ -42,60 +39,31 @@ def get_blogger_service():
     except Exception as e:
         print(f"Error creating Blogger service: {e}"); return None
 
-def setup_selenium_driver():
-    print("  Setting up Selenium driver...")
-    options = webdriver.ChromeOptions()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36")
+def upload_image_to_imgbb(image_url, referer):
+    """সরাসরি API ব্যবহার করে ImgBB-তে ছবি আপলোড করে"""
     try:
-        driver = webdriver.Chrome(options=options)
-        print("  Selenium driver setup complete.")
-        return driver
-    except Exception as e:
-        print(f"  Failed to set up Selenium driver: {e}"); return None
-
-def upload_image_to_cattbox_manually(driver, image_url, referer):
-    temp_file_path = None
-    try:
-        print(f"    Downloading image to temp file: {image_url}")
-        image_response = requests.get(image_url, headers={'User-Agent': 'Mozilla/5.0', 'Referer': referer}, timeout=60, stream=True)
+        print(f"    Downloading image: {image_url}")
+        image_response = requests.get(image_url, headers={'User-Agent': 'Mozilla/5.0', 'Referer': referer}, timeout=60)
         image_response.raise_for_status()
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
-            for chunk in image_response.iter_content(chunk_size=8192):
-                tmp_file.write(chunk)
-            temp_file_path = tmp_file.name
-
-        print(f"    Uploading to Catbox.moe from {temp_file_path}")
-        # --- সঠিক URL টি এখানে ---
-        driver.get("https://catbox.moe/")
         
-        file_input = driver.find_element(By.CSS_SELECTOR, "input[type='file']")
+        image_b64 = base64.b64encode(image_response.content)
         
-        driver.execute_script("arguments[0].style.display = 'block';", file_input)
-        file_input.send_keys(temp_file_path)
-
-        wait = WebDriverWait(driver, 120)
-        wait.until(EC.text_to_be_present_in_element((By.TAG_NAME, 'body'), 'https://files.catbox.moe/'))
+        upload_url = "https://api.imgbb.com/1/upload"
+        payload = { "key": IMGBB_API_KEY, "image": image_b64 }
         
-        uploaded_url = driver.find_element(By.TAG_NAME, 'body').text.strip()
+        print("    Uploading to ImgBB via API...")
+        upload_response = requests.post(upload_url, data=payload, timeout=120)
+        upload_response.raise_for_status()
         
-        os.remove(temp_file_path)
-        
-        # নিশ্চিত করুন যে শুধুমাত্র URL টিই ফেরত যাচ্ছে
-        if uploaded_url.startswith("https://files.catbox.moe/"):
-            print(f"    CattBox upload successful: {uploaded_url}")
-            return uploaded_url
+        result = upload_response.json()
+        if result.get('data') and result['data'].get('url'):
+            print(f"    ImgBB upload successful: {result['data']['url']}")
+            return result['data']['url']
         else:
-            print(f"    Failed to parse CattBox URL from response: {uploaded_url}")
+            print(f"    ImgBB upload failed: {result}")
             return None
-
-    except Exception as e:
-        print(f"    An error occurred during CattBox upload: {e}")
-        if temp_file_path and os.path.exists(temp_file_path):
-            os.remove(temp_file_path)
+    except requests.RequestException as e:
+        print(f"    Error during ImgBB upload: {e}")
         return None
 
 def get_jikan_manga_details(series_name):
@@ -112,7 +80,7 @@ def get_jikan_manga_details(series_name):
     except requests.RequestException as e:
         print(f"    Error fetching Jikan data: {e}"); return None
 
-def create_main_post(service, driver, series_name):
+def create_main_post(service, series_name):
     print(f"  Creating main post for '{series_name}'...")
     details = get_jikan_manga_details(series_name)
     if not details: return False
@@ -122,8 +90,8 @@ def create_main_post(service, driver, series_name):
     cover_url_original = details.get('images', {}).get('jpg', {}).get('large_image_url', '')
     if not cover_url_original: return False
         
-    print("    Uploading cover image via CattBox...")
-    cover_url_final = upload_image_to_cattbox_manually(driver, cover_url_original, 'https://myanimelist.net/')
+    print("    Uploading cover image via ImgBB...")
+    cover_url_final = upload_image_to_imgbb(cover_url_original, 'https://myanimelist.net/')
     if not cover_url_final:
         print("    Failed to upload cover image. Skipping main post creation.")
         return False
@@ -163,7 +131,7 @@ def scrape_chapters(series_config):
     except requests.RequestException as e:
         print(f"  Error scraping chapter list: {e}"); return []
 
-def create_chapter_post(service, driver, series_name, chapter_info, image_selector):
+def create_chapter_post(service, series_name, chapter_info, image_selector):
     chapter_title, chapter_url = chapter_info['title'], chapter_info['url']
     print(f"\n- Processing Chapter: {chapter_title}")
     try:
@@ -179,13 +147,15 @@ def create_chapter_post(service, driver, series_name, chapter_info, image_select
             if not img_url: continue
             
             print(f"  Processing image {i+1}/{len(image_tags)}")
-            cattbox_url = upload_image_to_cattbox_manually(driver, img_url, chapter_url)
+            imgbb_url = upload_image_to_imgbb(img_url, chapter_url)
             
-            if cattbox_url:
-                html_content += f'<div class="separator" style="text-align: center;"><img src="{cattbox_url}" /></div>\n'
+            if imgbb_url:
+                html_content += f'<div class="separator" style="text-align: center;"><img src="{imgbb_url}" /></div>\n'
             else:
                 print("    Image upload failed. Skipping this image.")
-            time.sleep(5)
+            
+            # --- পরিবর্তন: নিরাপদ বিরতির জন্য ১৫ সেকেন্ড ---
+            time.sleep(15)
         
         if not html_content: return False, None
 
@@ -200,49 +170,45 @@ def main():
     configs = load_json(CONFIG_FILE, [])
     state = load_json(STATE_FILE, {"main_posts_created": [], "chapters_posted": {}})
     blogger_service = get_blogger_service()
-    driver = setup_selenium_driver()
 
-    if not blogger_service or not driver:
-        if driver: driver.quit()
-        print("Could not initialize services. Exiting.")
+    if not blogger_service:
+        print("Could not initialize Blogger service. Exiting.")
         return
 
-    try:
-        for config in configs:
-            series_name = config['name']
-            print(f"\n--- Processing Series: {series_name} ---")
-            
-            if series_name not in state["main_posts_created"]:
-                success = create_main_post(blogger_service, driver, series_name)
-                if success:
-                    state["main_posts_created"].append(series_name)
-                    save_json(STATE_FILE, state)
-                    time.sleep(60)
-                else:
-                    time.sleep(120); continue
-            
-            all_chapters_on_site = scrape_chapters(config)
-            if series_name not in state["chapters_posted"]:
-                state["chapters_posted"][series_name] = []
-            
-            posted_chapter_urls = state["chapters_posted"][series_name]
-            chapters_to_post = [ch for ch in all_chapters_on_site if ch['url'] not in posted_chapter_urls]
-            
-            if not chapters_to_post:
-                print(f"  No new chapters to post for {series_name}.")
+    for config in configs:
+        series_name = config['name']
+        print(f"\n--- Processing Series: {series_name} ---")
+        
+        if series_name not in state["main_posts_created"]:
+            success = create_main_post(blogger_service, series_name)
+            if success:
+                state["main_posts_created"].append(series_name)
+                save_json(STATE_FILE, state)
+                time.sleep(60)
+            else:
                 time.sleep(120); continue
-            
-            for chapter in chapters_to_post:
-                success, posted_url = create_chapter_post(blogger_service, driver, series_name, chapter, config['selectors']['chapter_image'])
-                if success and posted_url:
-                    state["chapters_posted"][series_name].append(posted_url)
-                    save_json(STATE_FILE, state)
-                time.sleep(30)
-            time.sleep(120)
-    
-    finally:
-        print("Closing Selenium driver.")
-        driver.quit()
+        
+        all_chapters_on_site = scrape_chapters(config)
+        if series_name not in state["chapters_posted"]:
+            state["chapters_posted"][series_name] = []
+        
+        posted_chapter_urls = state["chapters_posted"][series_name]
+        chapters_to_post = [ch for ch in all_chapters_on_site if ch['url'] not in posted_chapter_urls]
+        
+        if not chapters_to_post:
+            print(f"  No new chapters to post for {series_name}.")
+            time.sleep(120); continue
+        
+        for chapter in chapters_to_post:
+            success, posted_url = create_chapter_post(blogger_service, series_name, chapter, config['selectors']['chapter_image'])
+            if success and posted_url:
+                state["chapters_posted"][series_name].append(posted_url)
+                save_json(STATE_FILE, state)
+            time.sleep(30)
+        time.sleep(120)
 
 if __name__ == '__main__':
-    main()
+    if not all([BLOG_ID, G_CLIENT_ID, G_CLIENT_SECRET, G_REFRESH_TOKEN, IMGBB_API_KEY]):
+        print("Error: One or more required secrets are missing.")
+    else:
+        main()
