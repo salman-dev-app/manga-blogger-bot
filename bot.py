@@ -1,4 +1,4 @@
-# bot.py (v7 - The Ultimate Human Simulator Bot for CattBox)
+# bot.py (v7.2 - The Ultimate Human Simulator Bot - Full Code)
 
 import os
 import json
@@ -15,6 +15,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import tempfile
+import base64
 
 # --- Configuration & Helper Functions ---
 BLOG_ID = os.getenv('BLOG_ID')
@@ -45,7 +46,6 @@ def get_blogger_service():
         print(f"Error creating Blogger service: {e}"); return None
 
 def setup_selenium_driver():
-    """একটি হেডলেস Selenium Chrome ড্রাইভার সেটআপ করে"""
     print("  Setting up Selenium driver...")
     options = webdriver.ChromeOptions()
     options.add_argument('--headless')
@@ -53,21 +53,21 @@ def setup_selenium_driver():
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
     try:
+        # We need to specify the Chrome binary location in GitHub Actions
+        # options.binary_location = "/usr/bin/google-chrome-stable"
         driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
         print("  Selenium driver setup complete.")
         return driver
     except Exception as e:
-        print(f"  Failed to set up Selenium driver: {e}")
-        return None
+        print(f"  Failed to set up Selenium driver: {e}"); return None
 
 def upload_image_to_cattbox_manually(driver, image_url, referer):
-    """Selenium ব্যবহার করে CattBox-এ মানুষের মতো ছবি আপলোড করে"""
+    temp_file_path = None
     try:
         print(f"    Downloading image to temp file: {image_url}")
         image_response = requests.get(image_url, headers={'User-Agent': 'Mozilla/5.0', 'Referer': referer}, timeout=60, stream=True)
         image_response.raise_for_status()
 
-        # ছবিটি একটি অস্থায়ী ফাইলে সেভ করা হচ্ছে
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
             for chunk in image_response.iter_content(chunk_size=8192):
                 tmp_file.write(chunk)
@@ -76,36 +76,38 @@ def upload_image_to_cattbox_manually(driver, image_url, referer):
         print(f"    Uploading to CattBox from {temp_file_path}")
         driver.get("https://catbox.moe/")
         
-        # "Select Files" ইনপুট ফিল্ডটি খুঁজে বের করে সেখানে ফাইলের পাথ দেওয়া হচ্ছে
         file_input = driver.find_element(By.ID, "fileToUpload")
         file_input.send_keys(temp_file_path)
 
-        # আপলোড শেষ হওয়ার জন্য অপেক্ষা (এখানে আমরা আপলোড হওয়া ফাইলের লিঙ্কটি প্রদর্শিত হওয়ার জন্য অপেক্ষা করব)
-        # CattBox আপলোড হওয়ার পর সরাসরি লিঙ্কটি পেজে দেখায়
-        wait = WebDriverWait(driver, 120) # ১২০ সেকেন্ড পর্যন্ত অপেক্ষা
-        # আপলোড হওয়া ফাইলের লিঙ্কটি সাধারণত একটি টেক্সটবক্সে বা সরাসরি বডিতে দেখা যায়
-        # এই সিলেক্টরটি CattBox-এর গঠন অনুযায়ী পরিবর্তন হতে পারে
-        uploaded_url_element = wait.until(EC.text_to_be_present_in_element_value((By.ID, 'catbox-url'), 'https://files.catbox.moe/'))
+        wait = WebDriverWait(driver, 120)
+        wait.until(EC.presence_of_element_located((By.ID, "catbox-url")))
         
         uploaded_url = driver.find_element(By.ID, 'catbox-url').get_attribute('value')
         
-        os.remove(temp_file_path) # অস্থায়ী ফাইলটি মুছে ফেলা হচ্ছে
+        os.remove(temp_file_path)
         print(f"    CattBox upload successful: {uploaded_url}")
         return uploaded_url
 
     except Exception as e:
         print(f"    An error occurred during CattBox upload: {e}")
-        if 'temp_file_path' in locals() and os.path.exists(temp_file_path):
+        if temp_file_path and os.path.exists(temp_file_path):
             os.remove(temp_file_path)
         return None
 
-# --- Main Post and Chapter Post Logic ---
 def get_jikan_manga_details(series_name):
-    # ... (এই ফাংশনটি আগের মতোই থাকবে) ...
-    pass
+    print(f"    Fetching details for '{series_name}' from Jikan API...")
+    try:
+        search_url = f"https://api.jikan.moe/v4/manga?q={series_name.replace(' ', '%20')}&limit=1"
+        response = requests.get(search_url, timeout=30)
+        response.raise_for_status()
+        results = response.json().get('data', [])
+        if not results: return None
+        return results[0]
+    except requests.RequestException as e:
+        print(f"    Error fetching Jikan data: {e}"); return None
 
 def create_main_post(service, driver, series_name):
-    print(f"  Main post for '{series_name}' does not exist. Creating it now...")
+    print(f"  Creating main post for '{series_name}'...")
     details = get_jikan_manga_details(series_name)
     if not details: return False
     
@@ -114,27 +116,56 @@ def create_main_post(service, driver, series_name):
     cover_url_original = details.get('images', {}).get('jpg', {}).get('large_image_url', '')
     if not cover_url_original: return False
         
-    print("  Uploading cover image...")
-    cover_url_cattbox = upload_image_to_cattbox_manually(driver, cover_url_original, 'https://myanimelist.net/')
-    if not cover_url_cattbox:
-        print("  Failed to upload cover image. Skipping main post creation.")
+    print("    Uploading cover image via CattBox...")
+    cover_url_final = upload_image_to_cattbox_manually(driver, cover_url_original, 'https://myanimelist.net/')
+    if not cover_url_final:
+        print("    Failed to upload cover image. Skipping main post creation.")
         return False
         
-    # ... (বাকি পোস্ট তৈরির লজিক অপরিবর্তিত) ...
-    pass
+    labels = [tag.get('name') for tag in details.get('genres', [])]
+    labels.append("Series"); labels.append(series_name)
+    cover_html = f'<div class="separator" style="text-align: center;"><img src="{cover_url_final}" /></div>'
+    content = f'{cover_html}<p>{synopsis}</p><!--chapter-list--><div class="chapter_get" data-labelchapter="{series_name}"></div>'
+    
+    try:
+        body = {"title": title, "content": content, "labels": list(set(labels))}
+        post = service.posts().insert(blogId=BLOG_ID, body=body, isDraft=False).execute()
+        print(f"    Successfully created main post: '{post['title']}'")
+        return True
+    except Exception as e:
+        print(f"    Error creating main post on Blogger: {e}"); return False
 
 def scrape_chapters(series_config):
-    # ... (এই ফাংশনটি আগের মতোই থাকবে) ...
-    pass
+    list_url, selectors = series_config['list_url'], series_config['selectors']
+    print(f"  Scraping chapter list from {list_url}")
+    try:
+        response = requests.get(list_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=30)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        all_chapters = []
+        chapter_items = soup.select(selectors['chapter_list_item'])
+        for item in chapter_items:
+            link_tag = item.select_one(selectors['chapter_link'])
+            title_tag = item.select_one(selectors['chapter_title'])
+            if not link_tag or not title_tag: continue
+            chapter_url = link_tag.get('href', '').strip()
+            if chapter_url and not chapter_url.startswith('http'):
+                chapter_url = urljoin(list_url, chapter_url)
+            if chapter_url:
+                all_chapters.append({'title': title_tag.text.strip(), 'url': chapter_url})
+        return list(reversed(all_chapters))
+    except requests.RequestException as e:
+        print(f"  Error scraping chapter list: {e}"); return []
 
 def create_chapter_post(service, driver, series_name, chapter_info, image_selector):
     chapter_title, chapter_url = chapter_info['title'], chapter_info['url']
     print(f"\n- Processing Chapter: {chapter_title}")
     try:
-        # ... (স্ক্র্যাপিং-এর অংশ অপরিবর্তিত) ...
         response = requests.get(chapter_url, headers={'User-agent': 'Mozilla/5.0'}, timeout=30)
-        # ...
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
         image_tags = soup.select(image_selector)
+        if not image_tags: return False, None
         
         html_content = ""
         for i, img_tag in enumerate(image_tags):
@@ -148,11 +179,14 @@ def create_chapter_post(service, driver, series_name, chapter_info, image_select
                 html_content += f'<div class="separator" style="text-align: center;"><img src="{cattbox_url}" /></div>\n'
             else:
                 print("    Image upload failed. Skipping this image.")
-            
-            time.sleep(5) # প্রতিটি ছবির পর বিরতি
+            time.sleep(5)
         
-        # ... (বাকি পোস্ট তৈরির লজিক অপরিবর্তিত) ...
-        pass
+        if not html_content: return False, None
+
+        body = {"title": chapter_title, "content": html_content, "labels": ["Chapter", series_name]}
+        post = service.posts().insert(blogId=BLOG_ID, body=body, isDraft=False).execute()
+        print(f"  Successfully posted: '{post['title']}'")
+        return True, chapter_url
     except Exception as e:
         print(f"  An error occurred: {e}"); return False, None
 
@@ -174,9 +208,31 @@ def main():
             
             if series_name not in state["main_posts_created"]:
                 success = create_main_post(blogger_service, driver, series_name)
-                # ... (বাকি লজিক অপরিবর্তিত) ...
+                if success:
+                    state["main_posts_created"].append(series_name)
+                    save_json(STATE_FILE, state)
+                    time.sleep(60)
+                else:
+                    time.sleep(120); continue
             
-            # ... (বাকি চ্যাপ্টার প্রসেসিং লজিক অপরিবর্তিত) ...
+            all_chapters_on_site = scrape_chapters(config)
+            if series_name not in state["chapters_posted"]:
+                state["chapters_posted"][series_name] = []
+            
+            posted_chapter_urls = state["chapters_posted"][series_name]
+            chapters_to_post = [ch for ch in all_chapters_on_site if ch['url'] not in posted_chapter_urls]
+            
+            if not chapters_to_post:
+                print(f"  No new chapters to post for {series_name}.")
+                time.sleep(120); continue
+            
+            for chapter in chapters_to_post:
+                success, posted_url = create_chapter_post(blogger_service, driver, series_name, chapter, config['selectors']['chapter_image'])
+                if success and posted_url:
+                    state["chapters_posted"][series_name].append(posted_url)
+                    save_json(STATE_FILE, state)
+                time.sleep(30)
+            time.sleep(120)
     
     finally:
         print("Closing Selenium driver.")
