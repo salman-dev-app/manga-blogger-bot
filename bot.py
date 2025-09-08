@@ -1,4 +1,4 @@
-# bot.py (v7.3 - The Ultimate Human Simulator Bot - Final Code)
+# bot.py (v7.5 - The Ultimate Human Simulator Bot - CattBox Spelling Fix)
 
 import os
 import json
@@ -43,15 +43,13 @@ def get_blogger_service():
         print(f"Error creating Blogger service: {e}"); return None
 
 def setup_selenium_driver():
-    """একটি হেডলেস Selenium Chrome ড্রাইভার সেটআপ করে"""
     print("  Setting up Selenium driver...")
     options = webdriver.ChromeOptions()
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36")
     try:
-        # browser-actions/setup-chrome@v1 স্বয়ংক্রিয়ভাবে ড্রাইভার সেটআপ করে দেয়
         driver = webdriver.Chrome(options=options)
         print("  Selenium driver setup complete.")
         return driver
@@ -70,21 +68,29 @@ def upload_image_to_cattbox_manually(driver, image_url, referer):
                 tmp_file.write(chunk)
             temp_file_path = tmp_file.name
 
-        print(f"    Uploading to CattBox from {temp_file_path}")
+        print(f"    Uploading to Catbox.moe from {temp_file_path}")
+        # --- সঠিক URL টি এখানে ---
         driver.get("https://catbox.moe/")
         
-        file_input = driver.find_element(By.ID, "fileToUpload")
+        file_input = driver.find_element(By.CSS_SELECTOR, "input[type='file']")
+        
+        driver.execute_script("arguments[0].style.display = 'block';", file_input)
         file_input.send_keys(temp_file_path)
 
         wait = WebDriverWait(driver, 120)
-        # আপলোড হওয়া ফাইলের লিঙ্কটি সরাসরি বডিতে টেক্সট হিসেবে আসে
         wait.until(EC.text_to_be_present_in_element((By.TAG_NAME, 'body'), 'https://files.catbox.moe/'))
         
-        uploaded_url = driver.find_element(By.TAG_NAME, 'body').text
+        uploaded_url = driver.find_element(By.TAG_NAME, 'body').text.strip()
         
         os.remove(temp_file_path)
-        print(f"    CattBox upload successful: {uploaded_url}")
-        return uploaded_url
+        
+        # নিশ্চিত করুন যে শুধুমাত্র URL টিই ফেরত যাচ্ছে
+        if uploaded_url.startswith("https://files.catbox.moe/"):
+            print(f"    CattBox upload successful: {uploaded_url}")
+            return uploaded_url
+        else:
+            print(f"    Failed to parse CattBox URL from response: {uploaded_url}")
+            return None
 
     except Exception as e:
         print(f"    An error occurred during CattBox upload: {e}")
