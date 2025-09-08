@@ -1,27 +1,32 @@
 name: Manga Publishing Bot
+
 on:
   schedule:
     - cron: '0 */6 * * *'
   workflow_dispatch:
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-      - name: Install Google Chrome
-        run: |
-          sudo apt-get update
-          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-          sudo apt install -y ./google-chrome-stable_current_amd64.deb
-      - name: Install dependencies
+
+      # --- নতুন এবং নির্ভরযোগ্য Chrome সেটআপ ---
+      - name: Set up Chrome
+        uses: browser-actions/setup-chrome@v1
+      
+      - name: Install Python Dependencies
         run: pip install -r requirements.txt
+
       - name: Run the bot script
         env:
           BLOG_ID: ${{ secrets.BLOG_ID }}
@@ -29,6 +34,7 @@ jobs:
           G_CLIENT_SECRET: ${{ secrets.G_CLIENT_SECRET }}
           G_REFRESH_TOKEN: ${{ secrets.G_REFRESH_TOKEN }}
         run: python bot.py
+
       - name: Commit and push if changed
         run: |
           git config --global user.name 'github-actions[bot]'
