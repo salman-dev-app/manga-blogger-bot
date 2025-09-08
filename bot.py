@@ -1,4 +1,4 @@
-# bot.py (v7.2 - The Ultimate Human Simulator Bot - Full Code)
+# bot.py (v7.3 - The Ultimate Human Simulator Bot - Final Code)
 
 import os
 import json
@@ -9,13 +9,10 @@ from googleapiclient.discovery import build
 import time
 from urllib.parse import urljoin
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service as ChromeService
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import tempfile
-import base64
 
 # --- Configuration & Helper Functions ---
 BLOG_ID = os.getenv('BLOG_ID')
@@ -46,6 +43,7 @@ def get_blogger_service():
         print(f"Error creating Blogger service: {e}"); return None
 
 def setup_selenium_driver():
+    """একটি হেডলেস Selenium Chrome ড্রাইভার সেটআপ করে"""
     print("  Setting up Selenium driver...")
     options = webdriver.ChromeOptions()
     options.add_argument('--headless')
@@ -53,9 +51,8 @@ def setup_selenium_driver():
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
     try:
-        # We need to specify the Chrome binary location in GitHub Actions
-        # options.binary_location = "/usr/bin/google-chrome-stable"
-        driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
+        # browser-actions/setup-chrome@v1 স্বয়ংক্রিয়ভাবে ড্রাইভার সেটআপ করে দেয়
+        driver = webdriver.Chrome(options=options)
         print("  Selenium driver setup complete.")
         return driver
     except Exception as e:
@@ -80,9 +77,10 @@ def upload_image_to_cattbox_manually(driver, image_url, referer):
         file_input.send_keys(temp_file_path)
 
         wait = WebDriverWait(driver, 120)
-        wait.until(EC.presence_of_element_located((By.ID, "catbox-url")))
+        # আপলোড হওয়া ফাইলের লিঙ্কটি সরাসরি বডিতে টেক্সট হিসেবে আসে
+        wait.until(EC.text_to_be_present_in_element((By.TAG_NAME, 'body'), 'https://files.catbox.moe/'))
         
-        uploaded_url = driver.find_element(By.ID, 'catbox-url').get_attribute('value')
+        uploaded_url = driver.find_element(By.TAG_NAME, 'body').text
         
         os.remove(temp_file_path)
         print(f"    CattBox upload successful: {uploaded_url}")
@@ -101,7 +99,9 @@ def get_jikan_manga_details(series_name):
         response = requests.get(search_url, timeout=30)
         response.raise_for_status()
         results = response.json().get('data', [])
-        if not results: return None
+        if not results:
+            print(f"    Could not find '{series_name}' on MyAnimeList.")
+            return None
         return results[0]
     except requests.RequestException as e:
         print(f"    Error fetching Jikan data: {e}"); return None
