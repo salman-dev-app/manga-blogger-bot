@@ -1,4 +1,4 @@
-# bot.py (v8.1 - The Ultimate Simple & Reliable ImgBB Bot - Final Version)
+# bot.py (v8.2 - The Final & Stable Bot with Correct Logic)
 
 import os
 import json
@@ -40,7 +40,6 @@ def get_blogger_service():
         print(f"Error creating Blogger service: {e}"); return None
 
 def upload_image_to_imgbb(image_url, referer):
-    """সরাসরি API ব্যবহার করে ImgBB-তে ছবি আপলোড করে"""
     try:
         print(f"    Downloading image: {image_url}")
         image_response = requests.get(image_url, headers={'User-Agent': 'Mozilla/5.0', 'Referer': referer}, timeout=60)
@@ -73,9 +72,7 @@ def get_jikan_manga_details(series_name):
         response = requests.get(search_url, timeout=30)
         response.raise_for_status()
         results = response.json().get('data', [])
-        if not results:
-            print(f"    Could not find '{series_name}' on MyAnimeList.")
-            return None
+        if not results: return None
         return results[0]
     except requests.RequestException as e:
         print(f"    Error fetching Jikan data: {e}"); return None
@@ -127,6 +124,8 @@ def scrape_chapters(series_config):
                 chapter_url = urljoin(list_url, chapter_url)
             if chapter_url:
                 all_chapters.append({'title': title_tag.text.strip(), 'url': chapter_url})
+        
+        # --- মূল পরিবর্তন: চ্যাপ্টারগুলোকে পুরোনো থেকে নতুন ক্রমে সাজানো ---
         return list(reversed(all_chapters))
     except requests.RequestException as e:
         print(f"  Error scraping chapter list: {e}"); return []
@@ -139,7 +138,7 @@ def create_chapter_post(service, series_name, chapter_info, image_selector):
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
         image_tags = soup.select(image_selector)
-        if not image_tags: return False, None
+        if not image_tags: return False
         
         html_content = ""
         for i, img_tag in enumerate(image_tags):
@@ -154,17 +153,16 @@ def create_chapter_post(service, series_name, chapter_info, image_selector):
             else:
                 print("    Image upload failed. Skipping this image.")
             
-            # --- পরিবর্তন: নিরাপদ বিরতির জন্য ১৫ সেকেন্ড ---
             time.sleep(15)
         
-        if not html_content: return False, None
+        if not html_content: return False
 
         body = {"title": chapter_title, "content": html_content, "labels": ["Chapter", series_name]}
         post = service.posts().insert(blogId=BLOG_ID, body=body, isDraft=False).execute()
         print(f"  Successfully posted: '{post['title']}'")
-        return True, chapter_url
+        return True
     except Exception as e:
-        print(f"  An error occurred: {e}"); return False, None
+        print(f"  An error occurred: {e}"); return False
 
 def main():
     configs = load_json(CONFIG_FILE, [])
@@ -180,12 +178,14 @@ def main():
         print(f"\n--- Processing Series: {series_name} ---")
         
         if series_name not in state["main_posts_created"]:
-            success = create_main_post(blogger_service, series_name)
-            if success:
+            if create_main_post(blogger_service, series_name):
                 state["main_posts_created"].append(series_name)
+                # --- মূল পরিবর্তন: কোনো কাজ করার পরেই স্টেট ফাইল সেভ করা ---
                 save_json(STATE_FILE, state)
+                print("  State file updated for main post.")
                 time.sleep(60)
             else:
+                print(f"  Skipping series '{series_name}' due to main post failure.")
                 time.sleep(120); continue
         
         all_chapters_on_site = scrape_chapters(config)
@@ -193,22 +193,23 @@ def main():
             state["chapters_posted"][series_name] = []
         
         posted_chapter_urls = state["chapters_posted"][series_name]
+        
         chapters_to_post = [ch for ch in all_chapters_on_site if ch['url'] not in posted_chapter_urls]
         
         if not chapters_to_post:
             print(f"  No new chapters to post for {series_name}.")
-            time.sleep(120); continue
+            continue
         
         for chapter in chapters_to_post:
-            success, posted_url = create_chapter_post(blogger_service, series_name, chapter, config['selectors']['chapter_image'])
-            if success and posted_url:
-                state["chapters_posted"][series_name].append(posted_url)
+            if create_chapter_post(blogger_service, series_name, chapter, config['selectors']['chapter_image']):
+                state["chapters_posted"][series_name].append(chapter['url'])
+                # --- মূল পরিবর্তন: প্রতিটি সফল চ্যাপ্টার পোস্টের পর স্টেট ফাইল সেভ করা ---
                 save_json(STATE_FILE, state)
+            
             time.sleep(30)
+        
+        print(f"--- Finished processing series: {series_name} ---")
         time.sleep(120)
 
 if __name__ == '__main__':
-    if not all([BLOG_ID, G_CLIENT_ID, G_CLIENT_SECRET, G_REFRESH_TOKEN, IMGBB_API_KEY]):
-        print("Error: One or more required secrets are missing.")
-    else:
-        main()
+    main()
