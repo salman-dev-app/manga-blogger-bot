@@ -1,4 +1,4 @@
-# bot.py (v10 - The Ultimate Cloudinary + MongoDB Bot)
+# bot.py (v10.1 - The Ultimate Cloudinary Bot with Hotlink Fix)
 
 import os
 import json
@@ -31,16 +31,21 @@ def get_blogger_service():
     except Exception as e:
         print(f"Error creating Blogger service: {e}"); return None
 
+# --- নতুন এবং উন্নত আপলোড ফাংশন ---
 def upload_image_to_cloudinary(image_url, referer):
-    """সরাসরি URL থেকে Cloudinary-তে ছবি আপলোড করে এবং অপটিমাইজ করে"""
+    """ছবিটি প্রথমে ডাউনলোড করে এবং তারপর Cloudinary-তে আপলোড করে"""
     try:
-        print(f"    Uploading to Cloudinary: {image_url}")
+        print(f"    Downloading image first to bypass potential hotlink protection: {image_url}")
+        image_response = requests.get(image_url, headers={'User-Agent': 'Mozilla/5.0', 'Referer': referer}, timeout=60)
+        image_response.raise_for_status()
+        
+        print(f"    Uploading downloaded image to Cloudinary...")
         upload_result = cloudinary.uploader.upload(
-            image_url,
+            image_response.content,
             fetch_format="auto",
-            quality="auto:good",
-            headers={'Referer': referer}
+            quality="auto:good"
         )
+        
         secure_url = upload_result.get('secure_url')
         if secure_url:
             print(f"    Cloudinary upload successful: {secure_url}")
