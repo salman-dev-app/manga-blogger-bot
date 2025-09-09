@@ -1,25 +1,5 @@
 [
   {
-    "name": "The Third Prince of the Fallen Kingdom Has Regressed",
-    "list_url": "https://manhwaclan.com/manga/the-third-prince-of-the-fallen-kingdom-has-regressed/",
-    "selectors": {
-      "chapter_list_item": "li.wp-manga-chapter",
-      "chapter_link": "a",
-      "chapter_title": "a",
-      "chapter_image": "div.reading-content img"
-    }
-  },
-  {
-    "name": "Heavenly Inquisition Sword",
-    "list_url": "https://manhwaclan.com/manga/heavenly-inquisition-sword/",
-    "selectors": {
-      "chapter_list_item": "li.wp-manga-chapter",
-      "chapter_link": "a",
-      "chapter_title": "a",
-      "chapter_image": "div.reading-content img"
-    }
-  },
-  {
     "name": "Return of the Sword God-Rank Civil Servant",
     "list_url": "https://manhwaclan.com/manga/return-of-the-sword-god-rank-civil-servant/",
     "selectors": {
