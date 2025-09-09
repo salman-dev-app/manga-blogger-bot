@@ -5,3 +5,4 @@ google-auth-oauthlib
 schedule
 cloudinary
 pymongo[srv]
+python-dotenv
