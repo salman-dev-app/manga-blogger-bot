@@ -1,4 +1,4 @@
-# bot.py (v8.2 - The Final & Stable Bot with Correct Logic)
+# bot.py (v8.3 - The Ultimate Koyeb Worker Bot)
 
 import os
 import json
@@ -9,6 +9,7 @@ from googleapiclient.discovery import build
 import time
 from urllib.parse import urljoin
 import base64
+import schedule
 
 # --- Configuration & Helper Functions ---
 BLOG_ID = os.getenv('BLOG_ID')
@@ -124,8 +125,6 @@ def scrape_chapters(series_config):
                 chapter_url = urljoin(list_url, chapter_url)
             if chapter_url:
                 all_chapters.append({'title': title_tag.text.strip(), 'url': chapter_url})
-        
-        # --- মূল পরিবর্তন: চ্যাপ্টারগুলোকে পুরোনো থেকে নতুন ক্রমে সাজানো ---
         return list(reversed(all_chapters))
     except requests.RequestException as e:
         print(f"  Error scraping chapter list: {e}"); return []
@@ -164,13 +163,16 @@ def create_chapter_post(service, series_name, chapter_info, image_selector):
     except Exception as e:
         print(f"  An error occurred: {e}"); return False
 
-def main():
+# --- Koyeb-এর জন্য নতুন মূল ফাংশন ---
+def job():
+    """এই ফাংশনটি শিডিউল অনুযায়ী চালানো হবে"""
+    print(f"\n--- Running scheduled job at {time.ctime()} ---")
     configs = load_json(CONFIG_FILE, [])
     state = load_json(STATE_FILE, {"main_posts_created": [], "chapters_posted": {}})
     blogger_service = get_blogger_service()
 
     if not blogger_service:
-        print("Could not initialize Blogger service. Exiting.")
+        print("Could not initialize Blogger service. Skipping this run.")
         return
 
     for config in configs:
@@ -180,12 +182,9 @@ def main():
         if series_name not in state["main_posts_created"]:
             if create_main_post(blogger_service, series_name):
                 state["main_posts_created"].append(series_name)
-                # --- মূল পরিবর্তন: কোনো কাজ করার পরেই স্টেট ফাইল সেভ করা ---
                 save_json(STATE_FILE, state)
-                print("  State file updated for main post.")
                 time.sleep(60)
             else:
-                print(f"  Skipping series '{series_name}' due to main post failure.")
                 time.sleep(120); continue
         
         all_chapters_on_site = scrape_chapters(config)
@@ -193,7 +192,6 @@ def main():
             state["chapters_posted"][series_name] = []
         
         posted_chapter_urls = state["chapters_posted"][series_name]
-        
         chapters_to_post = [ch for ch in all_chapters_on_site if ch['url'] not in posted_chapter_urls]
         
         if not chapters_to_post:
@@ -203,13 +201,27 @@ def main():
         for chapter in chapters_to_post:
             if create_chapter_post(blogger_service, series_name, chapter, config['selectors']['chapter_image']):
                 state["chapters_posted"][series_name].append(chapter['url'])
-                # --- মূল পরিবর্তন: প্রতিটি সফল চ্যাপ্টার পোস্টের পর স্টেট ফাইল সেভ করা ---
                 save_json(STATE_FILE, state)
             
             time.sleep(30)
-        
-        print(f"--- Finished processing series: {series_name} ---")
         time.sleep(120)
+    print("\n--- Job finished. Waiting for the next schedule. ---")
 
+# --- চূড়ান্ত 실행 (Execution) ব্লক ---
 if __name__ == '__main__':
-    main()
+    if not all([BLOG_ID, G_CLIENT_ID, G_CLIENT_SECRET, G_REFRESH_TOKEN, IMGBB_API_KEY]):
+        print("Error: One or more required secrets are missing. Bot will not start.")
+    else:
+        print("--- Bot Started on Koyeb ---")
+        print("The first job will run immediately.")
+        
+        # প্রথমে একবার কাজটি চালানো হচ্ছে
+        job() 
+        
+        # এরপর, প্রতি ৬ ঘণ্টা পর পর চালানোর জন্য শিডিউল করা হচ্ছে
+        schedule.every(6).hours.do(job)
+
+        print("Scheduler is set up. Bot will now run every 6 hours.")
+        while True:
+            schedule.run_pending()
+            time.sleep(60) # প্রতি মিনিটে চেক করা হচ্ছে
