@@ -1,4 +1,4 @@
-# bot.py (v8.3 - The Ultimate Koyeb Worker Bot)
+# bot.py (v10 - The Ultimate Cloudinary + MongoDB Bot)
 
 import os
 import json
@@ -8,62 +8,48 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 import time
 from urllib.parse import urljoin
-import base64
 import schedule
+import cloudinary
+import cloudinary.uploader
+from config import BLOG_ID, G_CLIENT_ID, G_CLIENT_SECRET, G_REFRESH_TOKEN, CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET, CONFIG_FILE
+from database import get_state, save_state
 
-# --- Configuration & Helper Functions ---
-BLOG_ID = os.getenv('BLOG_ID')
-IMGBB_API_KEY = os.getenv('IMGBB_API_KEY')
-CONFIG_FILE = 'config.json'
-STATE_FILE = 'posted_chapters.json'
-SCOPES = ['https://www.googleapis.com/auth/blogger']
-G_CLIENT_ID = os.getenv('G_CLIENT_ID')
-G_CLIENT_SECRET = os.getenv('G_CLIENT_SECRET')
-G_REFRESH_TOKEN = os.getenv('G_REFRESH_TOKEN')
+# --- Cloudinary Configuration ---
+cloudinary.config(
+  cloud_name = CLOUDINARY_CLOUD_NAME, 
+  api_key = CLOUDINARY_API_KEY, 
+  api_secret = CLOUDINARY_API_SECRET,
+  secure = True
+)
 
-def load_json(file_path, default_data):
-    if os.path.exists(file_path):
-        with open(file_path, 'r', encoding='utf-8') as f:
-            try: return json.load(f)
-            except json.JSONDecodeError: return default_data
-    return default_data
-
-def save_json(file_path, data):
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-
+# --- Helper Functions ---
 def get_blogger_service():
     try:
         creds_info = {"client_id": G_CLIENT_ID, "client_secret": G_CLIENT_SECRET, "refresh_token": G_REFRESH_TOKEN, "token_uri": "https://oauth2.googleapis.com/token"}
-        creds = Credentials.from_authorized_user_info(info=creds_info, scopes=SCOPES)
+        creds = Credentials.from_authorized_user_info(info=creds_info, scopes=['https://www.googleapis.com/auth/blogger'])
         return build('blogger', 'v3', credentials=creds)
     except Exception as e:
         print(f"Error creating Blogger service: {e}"); return None
 
-def upload_image_to_imgbb(image_url, referer):
+def upload_image_to_cloudinary(image_url, referer):
+    """সরাসরি URL থেকে Cloudinary-তে ছবি আপলোড করে এবং অপটিমাইজ করে"""
     try:
-        print(f"    Downloading image: {image_url}")
-        image_response = requests.get(image_url, headers={'User-Agent': 'Mozilla/5.0', 'Referer': referer}, timeout=60)
-        image_response.raise_for_status()
-        
-        image_b64 = base64.b64encode(image_response.content)
-        
-        upload_url = "https://api.imgbb.com/1/upload"
-        payload = { "key": IMGBB_API_KEY, "image": image_b64 }
-        
-        print("    Uploading to ImgBB via API...")
-        upload_response = requests.post(upload_url, data=payload, timeout=120)
-        upload_response.raise_for_status()
-        
-        result = upload_response.json()
-        if result.get('data') and result['data'].get('url'):
-            print(f"    ImgBB upload successful: {result['data']['url']}")
-            return result['data']['url']
+        print(f"    Uploading to Cloudinary: {image_url}")
+        upload_result = cloudinary.uploader.upload(
+            image_url,
+            fetch_format="auto",
+            quality="auto:good",
+            headers={'Referer': referer}
+        )
+        secure_url = upload_result.get('secure_url')
+        if secure_url:
+            print(f"    Cloudinary upload successful: {secure_url}")
+            return secure_url
         else:
-            print(f"    ImgBB upload failed: {result}")
+            print(f"    Cloudinary upload failed: {upload_result.get('error', 'Unknown error')}")
             return None
-    except requests.RequestException as e:
-        print(f"    Error during ImgBB upload: {e}")
+    except Exception as e:
+        print(f"    Error during Cloudinary upload: {e}")
         return None
 
 def get_jikan_manga_details(series_name):
@@ -88,8 +74,8 @@ def create_main_post(service, series_name):
     cover_url_original = details.get('images', {}).get('jpg', {}).get('large_image_url', '')
     if not cover_url_original: return False
         
-    print("    Uploading cover image via ImgBB...")
-    cover_url_final = upload_image_to_imgbb(cover_url_original, 'https://myanimelist.net/')
+    print("    Uploading cover image via Cloudinary...")
+    cover_url_final = upload_image_to_cloudinary(cover_url_original, 'https://myanimelist.net/')
     if not cover_url_final:
         print("    Failed to upload cover image. Skipping main post creation.")
         return False
@@ -145,14 +131,14 @@ def create_chapter_post(service, series_name, chapter_info, image_selector):
             if not img_url: continue
             
             print(f"  Processing image {i+1}/{len(image_tags)}")
-            imgbb_url = upload_image_to_imgbb(img_url, chapter_url)
+            cloudinary_url = upload_image_to_cloudinary(img_url, chapter_url)
             
-            if imgbb_url:
-                html_content += f'<div class="separator" style="text-align: center;"><img src="{imgbb_url}" /></div>\n'
+            if cloudinary_url:
+                html_content += f'<div class="separator" style="text-align: center;"><img src="{cloudinary_url}" /></div>\n'
             else:
                 print("    Image upload failed. Skipping this image.")
             
-            time.sleep(15)
+            time.sleep(2) # Cloudinary দ্রুত, তাই মাত্র ২ সেকেন্ড বিরতি
         
         if not html_content: return False
 
@@ -163,12 +149,14 @@ def create_chapter_post(service, series_name, chapter_info, image_selector):
     except Exception as e:
         print(f"  An error occurred: {e}"); return False
 
-# --- Koyeb-এর জন্য নতুন মূল ফাংশন ---
 def job():
     """এই ফাংশনটি শিডিউল অনুযায়ী চালানো হবে"""
     print(f"\n--- Running scheduled job at {time.ctime()} ---")
-    configs = load_json(CONFIG_FILE, [])
-    state = load_json(STATE_FILE, {"main_posts_created": [], "chapters_posted": {}})
+    
+    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+        configs = json.load(f)
+
+    state = get_state()
     blogger_service = get_blogger_service()
 
     if not blogger_service:
@@ -182,7 +170,7 @@ def job():
         if series_name not in state["main_posts_created"]:
             if create_main_post(blogger_service, series_name):
                 state["main_posts_created"].append(series_name)
-                save_json(STATE_FILE, state)
+                save_state(state)
                 time.sleep(60)
             else:
                 time.sleep(120); continue
@@ -192,6 +180,7 @@ def job():
             state["chapters_posted"][series_name] = []
         
         posted_chapter_urls = state["chapters_posted"][series_name]
+        
         chapters_to_post = [ch for ch in all_chapters_on_site if ch['url'] not in posted_chapter_urls]
         
         if not chapters_to_post:
@@ -201,27 +190,22 @@ def job():
         for chapter in chapters_to_post:
             if create_chapter_post(blogger_service, series_name, chapter, config['selectors']['chapter_image']):
                 state["chapters_posted"][series_name].append(chapter['url'])
-                save_json(STATE_FILE, state)
+                save_state(state)
             
             time.sleep(30)
         time.sleep(120)
     print("\n--- Job finished. Waiting for the next schedule. ---")
 
-# --- চূড়ান্ত 실행 (Execution) ব্লক ---
-if __name__ == '__main__':
-    if not all([BLOG_ID, G_CLIENT_ID, G_CLIENT_SECRET, G_REFRESH_TOKEN, IMGBB_API_KEY]):
-        print("Error: One or more required secrets are missing. Bot will not start.")
-    else:
-        print("--- Bot Started on Koyeb ---")
-        print("The first job will run immediately.")
-        
-        # প্রথমে একবার কাজটি চালানো হচ্ছে
-        job() 
-        
-        # এরপর, প্রতি ৬ ঘণ্টা পর পর চালানোর জন্য শিডিউল করা হচ্ছে
-        schedule.every(6).hours.do(job)
 
-        print("Scheduler is set up. Bot will now run every 6 hours.")
-        while True:
-            schedule.run_pending()
-            time.sleep(60) # প্রতি মিনিটে চেক করা হচ্ছে
+if __name__ == '__main__':
+    print("--- Bot Started on Koyeb ---")
+    print("The first job will run immediately.")
+    
+    job() 
+    
+    schedule.every(6).hours.do(job)
+
+    print("Scheduler is set up. Bot will now run every 6 hours.")
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
