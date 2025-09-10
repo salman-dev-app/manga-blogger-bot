@@ -12,7 +12,7 @@ from urllib.parse import urljoin
 import schedule
 import cloudinary
 import cloudinary.uploader
-from config import BLOG_ID, G_CLIENT_ID, G_CLIENT_SECRET, G_REFRESH_TOKEN, CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET, CONFIG_FILE
+from config import BLOG_ID, G_CLIENT_ID, G_CLIENT_SECRET, G_REFRESH_TOKEN, CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET, CONFIG_FILE, SCOPES
 from database import get_state, save_state
 
 # --- Cloudinary Configuration ---
